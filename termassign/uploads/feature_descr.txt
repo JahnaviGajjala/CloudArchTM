@@ -1,0 +1,28 @@
+DR_NO: Division of Records Number
+Date Rptd: Date reported
+DATE OCC: Occurrence Date
+TIME OCC: Occurrence Time
+AREA: The 21 Geographic Area number
+AREA NAME: The 21 Geographic Area name
+Rpt Dist No: A four-digit Geographic Area code 
+Part 1-2: Part 1-2
+Crm Cd: Indicates the crime committed.
+Crm Cd Desc: Provided Crime Code
+Mocodes: Modus Operandi
+Vict Age: Victim Age
+Vict Sex: Victim Sex
+Vict Descent: Victim Descent
+Premis Cd: Crime detailed location
+Premis Desc: Defines the Premise Code
+Weapon Used Cd:  Type of weapon
+Weapon Desc: Weapon code
+Status: Status of the case
+Status Desc: Status Code provided
+Crm Cd 1: Primary crime committed
+Crm Cd 2: Secondary crime committed
+Crm Cd 3: Third crime committed
+Crm Cd 4: Forth crime committed
+LOCATION: Street address of crime incident
+Cross Street: Cross Street of rounded Address
+LAT: Latitude
+LON: Longtitude
