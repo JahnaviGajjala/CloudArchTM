@@ -71,7 +71,7 @@ HTML_TEMPLATE = """
 <div class="container">
     <div class="header">
         <h1>Upload Your Cute Images to S3!</h1>
-        <p>Join us on a fluffy cloud adventure and store your precious documents safely in the sky.</p>
+        <p>Join us on a fluffy cloud adventure and store your precious images safely in the sky.</p>
     </div>
     <h2>Try It Out 🚀</h2>
     <p>Choose an image to upload and watch the magic happen.</p>
@@ -99,10 +99,61 @@ $(".custom-file-input").on("change", function() {
 </html>
 """
 
+# Enhanced SUCCESS_TEMPLATE with Bootstrap and additional styling
+SUCCESS_TEMPLATE = """
+<!doctype html>
+<html>
+<head>
+    <title>Upload Successful</title>
+    <!-- Bootstrap CSS CDN -->
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css">
+    <style>
+        body {
+            background-color: #f0f2f5;
+            font-family: 'Arial', sans-serif;
+        }
+        .container {
+            background-color: white;
+            border-radius: 10px;
+            padding: 20px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+        }
+        .btn-success {
+            background-color: #77dd77;
+            border-color: #77dd77;
+        }
+        .btn-success:hover {
+            background-color: #5cb85c;
+            border-color: #5cb85c;
+        }
+    </style>
+</head>
+<body>
+<div class="container mt-5">
+    <h2 style="color: #333;">Uploaded Successfully</h2>
+    <a href="/" class="btn btn-success mt-3">Go Back</a>
+</div>
+</body>
+</html>
+"""
+
 @app.route('/')
 def index():
     """Renders the main page with the upload form."""
     return render_template_string(HTML_TEMPLATE)
+
+def get_api_url(api_name, stage_name):
+    """Retrieve the API URL for a given API Gateway name and stage."""
+    region = 'us-east-1'
+    api_gateway_client = boto3.client('apigateway', region_name=region)
+    response = api_gateway_client.get_rest_apis()
+    
+    for item in response['items']:
+        if item['name'] == api_name:
+            api_id = item['id']
+            return f"https://{api_id}.execute-api.{region}.amazonaws.com/{stage_name}"
+    
+    raise ValueError(f"API Gateway '{api_name}' not found.")
 
 @app.route('/upload', methods=['POST'])
 def upload():
@@ -113,31 +164,24 @@ def upload():
     if file.filename == '':
         return redirect(url_for('index'))
     
-    if file and file.filename.endswith(tuple(['.png', '.jpg', '.jpeg'])):
+    if file:
         filename = secure_filename(file.filename)
         try:
             s3_client.upload_fileobj(file.stream, S3_BUCKET, filename)
-            # Redirect to a new URL for processing
-            return redirect(url_for('process_file', filename=filename))
+            api_gateway_url = get_api_url('JahnaviAPIGateway', 'prod')
+            api_endpoint = f"{api_gateway_url}/textract-polly"
+            headers = {'Content-Type': 'application/json'}
+            data = {"input_bucket": S3_BUCKET, "input_bucket_file": filename}
+            response = requests.post(api_endpoint, json=data, headers=headers)
+            
+            if response.status_code == 200:
+                return f"<div class='alert alert-success' role='alert'>Successfully uploaded and processed: {filename}</div>"
+            
+            return render_template_string(SUCCESS_TEMPLATE)
         except Exception as e:
             return str(e)
+    
     return redirect(url_for('index'))
-
-@app.route('/process_file/<filename>')
-def process_file(filename):
-    try:
-        api_gateway_url = get_api_url('JahnaviAPIGateway', 'prod')
-        api_endpoint = f"{api_gateway_url}/textract-polly"
-        headers = {'Content-Type': 'application/json'}
-        data = {"input_bucket": S3_BUCKET, "input_bucket_file": filename}
-        response = requests.post(api_endpoint, json=data, headers=headers)
-        
-        if response.status_code == 200:
-            return render_template_string(SUCCESS_TEMPLATE)
-        else:
-            return f"Error: {response.text}"
-    except Exception as e:
-        return str(e)
 
 if __name__ == '__main__':
     app.run(debug=True)

@@ -1,0 +1,156 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Deploy Flask app on EC2 instance with all the required security groups, permissions and IAM roles.
+ 
+Parameters:
+  InputBucketName:
+    Description: "The name of the S3 bucket for input to Textract."
+    Type: String
+    Default: "input-textract-jahnavi"
+
+  OutputBucketName:
+    Description: "The name of the S3 bucket for output from Polly."
+    Type: String
+    Default: "output-polly-jahnavi"
+
+Resources:
+  MyS3InputBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Ref InputBucketName
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: false
+        BlockPublicPolicy: false
+        IgnorePublicAcls: false
+        RestrictPublicBuckets: false
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+
+  MyS3OutputBucket: 
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Ref OutputBucketName
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: false
+        BlockPublicPolicy: false
+        IgnorePublicAcls: false
+        RestrictPublicBuckets: false
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+
+  MyS3InputBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref MyS3InputBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: AllowFullAccess
+            Effect: Allow
+            Principal: '*'
+            Action: 
+              - 's3:*'
+            Resource: 
+              - !Join ['', ['arn:aws:s3:::', !Ref MyS3InputBucket, '/*']]
+
+  MyS3OutputBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref MyS3OutputBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: AllowFullAccess
+            Effect: Allow
+            Principal: '*'
+            Action: 
+              - 's3:*'
+            Resource: 
+              - !Join ['', ['arn:aws:s3:::', !Ref MyS3OutputBucket, '/*']]
+  
+  CloudTermAssignment:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow SSH and port 5000 access from anywhere
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 5050
+          ToPort: 5050
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0   
+ 
+  EC2Profile:
+    Type: "AWS::IAM::Role"
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: "sts:AssumeRole"
+      Path: "/"
+      Policies:
+        - PolicyName: AccessS3Policy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: "logs:*"
+                Resource: "*"
+              - Effect: Allow
+                Action: "s3:*"
+                Resource: "*"
+        - PolicyName: ApiGatewayAccessPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - "apigateway:GET"
+                  - "apigateway:POST" 
+                  - "apigateway:PUT"
+                Resource:
+                  - "*"
+
+  EC2InstanceProfile:
+    Type: "AWS::IAM::InstanceProfile"
+    Properties:
+      Path: "/"
+      Roles:
+        - !Ref EC2Profile
+ 
+  CloudTermAssignmentInstance:
+    Type: "AWS::EC2::Instance"
+    Properties:
+      InstanceType: "t2.micro"
+      SecurityGroupIds:
+        - Ref: CloudTermAssignment
+      ImageId: "ami-051f8a213df8bc089"
+      IamInstanceProfile: !Ref EC2InstanceProfile
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          sudo yum update -y
+          sudo yum install -y git
+          sudo yum install -y python3-pip
+          python3 -m pip install --upgrade pip
+          sudo mkdir cloudComputingTermAssignment_jahnavi
+          cd cloudComputingTermAssignment_jahnavi
+          sudo git clone https://github.com/JahnaviGajjala/CloudComputingTermAssignmentJahnavi.git
+          cd CloudComputingTermAssignmentJahnavi/termassign # Update this path if your repo structure is different
+          sudo python3 -m venv venv
+          source venv/bin/activate
+          sudo pip install -r requirements.txt
+          sudo FLASK_APP=app.py FLASK_RUN_PORT=5050 FLASK_RUN_HOST=0.0.0.0 flask run &
+ 
+Outputs:
+  WebsiteURL:
+    Description: "URL for the Term Assignment Flask app"
+    Value: !Sub "http://${CloudTermAssignmentInstance.PublicDnsName}:5050"
