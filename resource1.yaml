@@ -5,7 +5,7 @@ Parameters:
   InputBucketName:
     Description: "The name of the S3 bucket for input to Textract."
     Type: String
-    Default: "input-textract-jahnavi"
+    Default: "input-rekognition-jahnavi"
 
   OutputBucketName:
     Description: "The name of the S3 bucket for output from Polly."
