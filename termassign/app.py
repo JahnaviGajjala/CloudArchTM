@@ -84,7 +84,6 @@ HTML_TEMPLATE = """
         <button type="submit" class="btn btn-primary">Upload to Cloud</button>
     </form>
     <div class="footer">
-        <p>Made with ❤️ and a sprinkle of cloud dust.</p>
     </div>
 </div>
 <script src="https://code.jquery.com/jquery-3.3.1.slim.min.js"></script>
@@ -100,6 +99,19 @@ $(".custom-file-input").on("change", function() {
 </html>
 """
 
+SUCCESS_TEMPLATE = """
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Success</title>
+</head>
+<body>
+    <p>IMAGE UPLOADED AND AUDIO FILE GENERATED</p>
+</body>
+</html>
+"""
 @app.route('/')
 def index():
     """Renders the main page with the upload form."""
