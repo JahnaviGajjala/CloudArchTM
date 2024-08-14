@@ -5,7 +5,6 @@ import requests
 
 app = Flask(__name__)
 
-# Update the S3 bucket name to reflect the bucket for storing input images
 S3_BUCKET = 'input-rekognition-jahnavi'
 
 s3_client = boto3.client('s3')

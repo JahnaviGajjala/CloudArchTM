@@ -1,6 +1,6 @@
 AWSTemplateFormatVersion: "2010-09-09"
-Description: Deploy Flask app on EC2 instance with all the required security groups, permissions and IAM roles.
- 
+Description: Deploy Flask app on EC2 instance with all the required security groups, permissions, IAM roles, monitoring, and backup strategies, following AWS Well-Architected Framework principles.
+
 Parameters:
   InputBucketName:
     Description: "The name of the S3 bucket for input to Textract."
@@ -12,30 +12,74 @@ Parameters:
     Type: String
     Default: "output-polly-jahnavi"
 
+  CostBudgetLimit:
+    Description: "The monthly budget limit for AWS costs."
+    Type: Number
+    Default: 100
+
+  AlarmEmail:
+    Description: "Email address to receive CloudWatch alarm notifications."
+    Type: String
+    Default: "jahnavigajjala02@gmail.com"
+
 Resources:
   MyS3InputBucket:
     Type: AWS::S3::Bucket
     Properties:
       BucketName: !Ref InputBucketName
       PublicAccessBlockConfiguration:
-        BlockPublicAcls: false
-        BlockPublicPolicy: false
-        IgnorePublicAcls: false
-        RestrictPublicBuckets: false
-    DeletionPolicy: Retain
-    UpdateReplacePolicy: Retain
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      LifecycleConfiguration:
+        Rules:
+          - Id: "TransitionToIA"
+            Status: Enabled
+            Transitions:
+              - TransitionInDays: 30
+                StorageClass: STANDARD_IA
+          - Id: "TransitionToGlacier"
+            Status: Enabled
+            Transitions:
+              - TransitionInDays: 90
+                StorageClass: GLACIER
+          - Id: "ExpireObjects"
+            Status: Enabled
+            ExpirationInDays: 365
 
   MyS3OutputBucket: 
     Type: AWS::S3::Bucket
     Properties:
       BucketName: !Ref OutputBucketName
       PublicAccessBlockConfiguration:
-        BlockPublicAcls: false
-        BlockPublicPolicy: false
-        IgnorePublicAcls: false
-        RestrictPublicBuckets: false
-    DeletionPolicy: Retain
-    UpdateReplacePolicy: Retain
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      LifecycleConfiguration:
+        Rules:
+          - Id: "TransitionToIA"
+            Status: Enabled
+            Transitions:
+              - TransitionInDays: 30
+                StorageClass: STANDARD_IA
+          - Id: "TransitionToGlacier"
+            Status: Enabled
+            Transitions:
+              - TransitionInDays: 90
+                StorageClass: GLACIER
+          - Id: "ExpireObjects"
+            Status: Enabled
+            ExpirationInDays: 365
 
   MyS3InputBucketPolicy:
     Type: AWS::S3::BucketPolicy
@@ -44,14 +88,18 @@ Resources:
       PolicyDocument:
         Version: '2012-10-17'
         Statement:
-          - Sid: AllowFullAccess
+          - Sid: AllowEC2InstanceAccess
             Effect: Allow
-            Principal: '*'
+            Principal:
+              AWS: !GetAtt EC2Profile.Arn
             Action: 
-              - 's3:*'
+              - 's3:GetObject'
+              - 's3:PutObject'
+              - 's3:ListBucket'
             Resource: 
-              - !Join ['', ['arn:aws:s3:::', !Ref MyS3InputBucket, '/*']]
-
+              - !Sub arn:aws:s3:::${InputBucketName}
+              - !Sub arn:aws:s3:::${InputBucketName}/*
+              
   MyS3OutputBucketPolicy:
     Type: AWS::S3::BucketPolicy
     Properties:
@@ -59,14 +107,18 @@ Resources:
       PolicyDocument:
         Version: '2012-10-17'
         Statement:
-          - Sid: AllowFullAccess
+          - Sid: AllowEC2InstanceAccess
             Effect: Allow
-            Principal: '*'
+            Principal:
+              AWS: !GetAtt EC2Profile.Arn
             Action: 
-              - 's3:*'
+              - 's3:GetObject'
+              - 's3:PutObject'
+              - 's3:ListBucket'
             Resource: 
-              - !Join ['', ['arn:aws:s3:::', !Ref MyS3OutputBucket, '/*']]
-  
+              - !Sub arn:aws:s3:::${OutputBucketName}
+              - !Sub arn:aws:s3:::${OutputBucketName}/*
+
   CloudTermAssignment:
     Type: AWS::EC2::SecurityGroup
     Properties:
@@ -83,8 +135,8 @@ Resources:
         - IpProtocol: tcp
           FromPort: 80
           ToPort: 80
-          CidrIp: 0.0.0.0/0   
- 
+          CidrIp: 0.0.0.0/0
+
   EC2Profile:
     Type: "AWS::IAM::Role"
     Properties:
@@ -102,11 +154,16 @@ Resources:
             Version: "2012-10-17"
             Statement:
               - Effect: Allow
-                Action: "logs:*"
-                Resource: "*"
-              - Effect: Allow
-                Action: "s3:*"
-                Resource: "*"
+                Action: 
+                  - "logs:*"
+                  - "s3:GetObject"
+                  - "s3:PutObject"
+                  - "s3:ListBucket"
+                Resource:
+                  - !Sub arn:aws:s3:::${InputBucketName}
+                  - !Sub arn:aws:s3:::${InputBucketName}/*
+                  - !Sub arn:aws:s3:::${OutputBucketName}
+                  - !Sub arn:aws:s3:::${OutputBucketName}/*
         - PolicyName: ApiGatewayAccessPolicy
           PolicyDocument:
             Version: "2012-10-17"
@@ -116,8 +173,25 @@ Resources:
                   - "apigateway:GET"
                   - "apigateway:POST" 
                   - "apigateway:PUT"
-                Resource:
-                  - "*"
+                Resource: "*"
+        - PolicyName: CloudWatchAccessPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: 
+                  - "cloudwatch:*"
+                  - "logs:*"
+                Resource: "*"
+        - PolicyName: SSMAccessPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: 
+                  - "ssm:*"
+                  - "ec2messages:*"
+                Resource: "*"
 
   EC2InstanceProfile:
     Type: "AWS::IAM::InstanceProfile"
@@ -125,7 +199,12 @@ Resources:
       Path: "/"
       Roles:
         - !Ref EC2Profile
- 
+
+  MyBackupVault:
+    Type: AWS::Backup::BackupVault
+    Properties:
+      BackupVaultName: "MyBackupVault"
+
   CloudTermAssignmentInstance:
     Type: "AWS::EC2::Instance"
     Properties:
@@ -140,16 +219,125 @@ Resources:
           sudo yum update -y
           sudo yum install -y git
           sudo yum install -y python3-pip
+          sudo yum install -y awslogs
+          sudo systemctl start awslogsd
+          sudo systemctl enable awslogsd
           python3 -m pip install --upgrade pip
           sudo mkdir cloudArchTM
           cd cloudArchTM
           sudo git clone https://github.com/JahnaviGajjala/CloudArchTM
-          cd CloudArchTM/termassign # Update this path if your repo structure is different
+          cd CloudArchTM/termassign
           sudo python3 -m venv venv
           source venv/bin/activate
           sudo pip install -r requirements.txt
           sudo FLASK_APP=app.py FLASK_RUN_PORT=5050 FLASK_RUN_HOST=0.0.0.0 flask run &
- 
+          aws s3 cp /var/log/cloud-init.log s3://${OutputBucketName}/cloud-init-logs/
+
+  CloudTermAssignmentInstanceBackup:
+    Type: "AWS::Backup::BackupPlan"
+    Properties:
+      BackupPlan:
+        BackupPlanName: "EC2InstanceBackupPlan"
+        BackupPlanRule:
+          - RuleName: "DailyBackup"
+            TargetBackupVault: !Ref MyBackupVault
+            ScheduleExpression: "cron(0 12 * * ? *)"
+            StartWindowMinutes: 60
+            CompletionWindowMinutes: 120
+            Lifecycle:
+              MoveToColdStorageAfterDays: 30
+              DeleteAfterDays: 365
+            RecoveryPointTags:
+              Backup: "Daily"
+
+  CachingDistribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Enabled: true
+        Origins:
+          - DomainName: !Sub '${CloudTermAssignmentInstance.PublicDnsName}'
+            Id: CloudTermAssignmentOrigin
+            CustomOriginConfig:
+              HTTPPort: 80
+              OriginProtocolPolicy: match-viewer
+        DefaultCacheBehavior:
+          TargetOriginId: CloudTermAssignmentOrigin
+          ViewerProtocolPolicy: redirect-to-https
+          AllowedMethods:
+            - GET
+            - HEAD
+          CachedMethods:
+            - GET
+            - HEAD
+          ForwardedValues:
+            QueryString: false
+            Cookies:
+              Forward: none
+        ViewerCertificate:
+          CloudFrontDefaultCertificate: true
+        DefaultRootObject: "index.html"
+
+  CloudTermAssignmentCPUAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: "HighCPUUtilization"
+      AlarmDescription: "Alarm when CPU utilization exceeds 80%"
+      Namespace: "AWS/EC2"
+      MetricName: "CPUUtilization"
+      Dimensions:
+        - Name: InstanceId
+          Value: !Ref CloudTermAssignmentInstance
+      Statistic: "Average"
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 80
+      ComparisonOperator: "GreaterThanThreshold"
+      AlarmActions:
+        - Ref: AlarmSNSTopic
+
+  AlarmSNSTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      Subscription:
+        - Endpoint: !Ref AlarmEmail
+          Protocol: email
+
+  AWSBudgetsBudget:
+    Type: "AWS::Budgets::Budget"
+    Properties:
+      Budget:
+        BudgetType: "COST"
+        TimeUnit: "MONTHLY"
+        BudgetLimit:
+          Amount: !Ref CostBudgetLimit
+          Unit: "USD"
+        CostFilters:
+          LinkedAccount: [ !Ref "AWS::AccountId" ]
+        CostTypes:
+          IncludeTax: true
+          IncludeSupport: true
+        BudgetName: "MonthlyBudget"
+      NotificationsWithSubscribers:
+        - Notification:
+            NotificationType: "ACTUAL"
+            ComparisonOperator: "GREATER_THAN"
+            Threshold: 80
+            ThresholdType: "PERCENTAGE"
+          Subscribers:
+            - SubscriptionType: "EMAIL"
+              Address: !Ref AlarmEmail
+
+  CloudTermAssignmentHealthCheck:
+    Type: "AWS::Route53::HealthCheck"
+    Properties:
+      HealthCheckConfig:
+        Type: "HTTP"
+        ResourcePath: "/"
+        FullyQualifiedDomainName: !GetAtt CloudTermAssignmentInstance.PublicDnsName
+        RequestInterval: 30
+        FailureThreshold: 3
+
 Outputs:
   WebsiteURL:
     Description: "URL for the Term Assignment Flask app"
